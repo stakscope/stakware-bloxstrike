@@ -1,0 +1,211 @@
+task.spawn(function()
+    local Camera = workspace.CurrentCamera
+    local ScreenSize = Camera.ViewportSize
+    
+    local Overlay = Drawing.new("Square")
+    Overlay.Size = ScreenSize
+    Overlay.Position = Vector2.new(0, 0)
+    Overlay.Color = Color3.fromRGB(0, 0, 0)
+    Overlay.Filled = true
+    Overlay.Transparency = 1
+    Overlay.Visible = true
+
+    local Text = Drawing.new("Text")
+    Text.Text = "stakware - upgraded buggywear"
+    Text.Size = 45
+    Text.Center = true
+    Text.Outline = true
+    Text.Color = Color3.fromRGB(255, 255, 255)
+    Text.Position = Vector2.new(ScreenSize.X / 2, ScreenSize.Y / 2)
+    Text.Transparency = 1
+    Text.Visible = true
+
+    task.wait(1.5) 
+
+    for i = 1, 30 do
+        local pulse = 1 - (math.sin(i / 5) * 0.2)
+        Text.Transparency = pulse
+        task.wait(0.05)
+    end
+    Text.Transparency = 1
+
+    local fadeSteps = 100
+    for i = 1, fadeSteps do
+        local alpha = 1 - (i / fadeSteps)
+        Overlay.Transparency = alpha
+        Text.Transparency = alpha
+        Text.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        Overlay.Size = Camera.ViewportSize
+        task.wait(0.05)
+    end
+
+    Overlay.Visible = false
+    Text.Visible = false
+    Overlay:Remove()
+    Text:Remove()
+end)
+
+-- =====================================================
+-- SERVICES & SETTINGS
+-- =====================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local Settings = {
+    FOV = 100,
+    TargetPart = "Head",
+    WallCheck = false,
+    ESPMaxDistance = 200,
+    AimbotSmoothing = 0.45
+}
+
+local aimbotEnabled = false
+
+-- =====================================================
+-- CHAMS (Fixed)
+-- =====================================================
+local Chams = {}
+local ChamColor = Color3.fromRGB(255, 0, 255)  -- Purple - change if you want
+
+local function CreateCham(plr)
+    if Chams[plr] or plr == LocalPlayer then return end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "BuggyChams"
+    highlight.FillColor = ChamColor
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.4
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = true
+    highlight.Parent = game:GetService("CoreGui")  -- Most reliable parent
+    
+    Chams[plr] = highlight
+end
+
+local function UpdateCham(plr)
+    local highlight = Chams[plr]
+    if not highlight then return end
+    
+    local char = plr.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health > 0 then
+            highlight.Adornee = char
+            highlight.Enabled = true
+            return
+        end
+    end
+    highlight.Adornee = nil
+    highlight.Enabled = false
+end
+
+local function RemoveCham(plr)
+    local highlight = Chams[plr]
+    if highlight then
+        highlight:Destroy()
+        Chams[plr] = nil
+    end
+end
+
+-- Chams Connections
+Players.PlayerAdded:Connect(function(plr)
+    CreateCham(plr)
+    if plr.Character then
+        task.wait(0.5)
+        CreateCham(plr)
+    end
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.6)
+        CreateCham(plr)
+    end)
+end)
+
+Players.PlayerRemoving:Connect(RemoveCham)
+
+-- Initial players
+for _, plr in ipairs(Players:GetPlayers()) do
+    CreateCham(plr)
+end
+
+-- Main Chams Update Loop
+RunService.RenderStepped:Connect(function()
+    for plr, _ in pairs(Chams) do
+        UpdateCham(plr)
+    end
+end)
+
+-- =====================================================
+-- AIMBOT (UNTOUCHED - PERFECT AS IS)
+-- =====================================================
+local Circle = Drawing.new("Circle")
+Circle.Radius = Settings.FOV
+Circle.Thickness = 2
+Circle.Color = Color3.fromRGB(255, 0, 0)
+Circle.Transparency = 0.6
+Circle.Filled = false
+Circle.Visible = true
+
+local function IsVisible(part)
+    if not Settings.WallCheck then return true end
+    local origin = Camera.CFrame.Position
+    local direction = (part.Position - origin).Unit * 1000
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    return result and result.Instance:IsDescendantOf(part.Parent)
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
+        aimbotEnabled = not aimbotEnabled
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    local ScreenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    Circle.Position = ScreenCenter
+    Circle.Radius = Settings.FOV
+
+    if not aimbotEnabled then return end
+
+    local bestTarget = nil
+    local bestDist = Settings.FOV + 1
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if not char then continue end
+        
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+        
+        local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
+        if not part then continue end
+        if not IsVisible(part) then continue end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if onScreen then
+            local dist = (Vector2.new(screenPos.X, screenPos.Y) - ScreenCenter).Magnitude
+            if dist < bestDist then
+                bestTarget = Vector2.new(screenPos.X, screenPos.Y)
+                bestDist = dist
+            end
+        end
+    end
+
+    if bestTarget then
+        local deltaX = bestTarget.X - ScreenCenter.X
+        local deltaY = bestTarget.Y - ScreenCenter.Y
+        
+        local smoothX = deltaX * Settings.AimbotSmoothing
+        local smoothY = deltaY * Settings.AimbotSmoothing
+        
+        mousemoverel(smoothX, smoothY)
+    end
+end)
