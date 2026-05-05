@@ -11,7 +11,7 @@ task.spawn(function()
     Overlay.Visible = true
 
     local Text = Drawing.new("Text")
-    Text.Text = "stakware - upgraded buggywear"
+    Text.Text = "stakware"
     Text.Size = 45
     Text.Center = true
     Text.Outline = true
@@ -65,81 +65,82 @@ local Settings = {
 local aimbotEnabled = false
 
 -- =====================================================
--- CHAMS (Fixed)
+-- CHAMS (Player + Debris Weapons)
 -- =====================================================
 local Chams = {}
-local ChamColor = Color3.fromRGB(255, 0, 255)  -- Purple - change if you want
+local WeaponChams = {}
 
-local function CreateCham(plr)
-    if Chams[plr] or plr == LocalPlayer then return end
-    
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "BuggyChams"
-    highlight.FillColor = ChamColor
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.FillTransparency = 0.4
-    highlight.OutlineTransparency = 0
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Enabled = true
-    highlight.Parent = game:GetService("CoreGui")  -- Most reliable parent
-    
-    Chams[plr] = highlight
+local MainColor = Color3.fromRGB(255, 0, 255)  -- Purple
+
+local function CreateHighlight()
+    local h = Instance.new("Highlight")
+    h.FillColor = MainColor
+    h.OutlineColor = Color3.fromRGB(255, 255, 255)
+    h.FillTransparency = 0.35
+    h.OutlineTransparency = 0
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Enabled = true
+    h.Parent = game:GetService("CoreGui")
+    return h
 end
 
-local function UpdateCham(plr)
-    local highlight = Chams[plr]
-    if not highlight then return end
-    
+local function GetWeaponModel(plr)
+    local debris = workspace:FindFirstChild("Debris")
+    if not debris then return nil end
+
+    local weaponName = plr.Name .. "_Weapon"
+    local weapon = debris:FindFirstChild(weaponName)
+    return weapon
+end
+
+local function UpdateChams(plr)
     local char = plr.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.Health > 0 then
-            highlight.Adornee = char
-            highlight.Enabled = true
-            return
+    if not char then return end
+    
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+
+    -- Player Body
+    if not Chams[plr] then
+        Chams[plr] = CreateHighlight()
+    end
+    Chams[plr].Adornee = char
+
+    -- Weapon from Debris
+    local weapon = GetWeaponModel(plr)
+    if weapon then
+        if not WeaponChams[plr] then
+            WeaponChams[plr] = CreateHighlight()
         end
-    end
-    highlight.Adornee = nil
-    highlight.Enabled = false
-end
-
-local function RemoveCham(plr)
-    local highlight = Chams[plr]
-    if highlight then
-        highlight:Destroy()
-        Chams[plr] = nil
+        WeaponChams[plr].Adornee = weapon
+    elseif WeaponChams[plr] then
+        WeaponChams[plr].Adornee = nil
     end
 end
 
--- Chams Connections
+local function RemovePlayer(plr)
+    if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
+    if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
+end
+
+-- Setup
 Players.PlayerAdded:Connect(function(plr)
-    CreateCham(plr)
-    if plr.Character then
-        task.wait(0.5)
-        CreateCham(plr)
-    end
-    plr.CharacterAdded:Connect(function()
-        task.wait(0.6)
-        CreateCham(plr)
-    end)
+    plr.CharacterAdded:Connect(function() task.wait(0.5) end)
 end)
 
-Players.PlayerRemoving:Connect(RemoveCham)
+Players.PlayerRemoving:Connect(RemovePlayer)
 
--- Initial players
-for _, plr in ipairs(Players:GetPlayers()) do
-    CreateCham(plr)
-end
-
--- Main Chams Update Loop
+-- Main Loop
 RunService.RenderStepped:Connect(function()
-    for plr, _ in pairs(Chams) do
-        UpdateCham(plr)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            UpdateChams(plr)
+        end
     end
 end)
 
 -- =====================================================
--- AIMBOT (UNTOUCHED - PERFECT AS IS)
+-- AIMBOT (UNTOUCHED - PERFECT)
 -- =====================================================
 local Circle = Drawing.new("Circle")
 Circle.Radius = Settings.FOV
@@ -202,10 +203,8 @@ RunService.RenderStepped:Connect(function()
     if bestTarget then
         local deltaX = bestTarget.X - ScreenCenter.X
         local deltaY = bestTarget.Y - ScreenCenter.Y
-        
         local smoothX = deltaX * Settings.AimbotSmoothing
         local smoothY = deltaY * Settings.AimbotSmoothing
-        
         mousemoverel(smoothX, smoothY)
     end
 end)
