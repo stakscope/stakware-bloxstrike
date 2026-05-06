@@ -8,8 +8,8 @@ local Settings = {
     ToggleKey = Enum.KeyCode.LeftAlt,
     
     -- ================== TEAM CHECK ==================
-    AimbotTeamCheck = true,     -- Team check specifically for Aimbot
-    ChamsTeamCheck = true,      -- Team check specifically for Chams
+    AimbotTeamCheck = true,
+    ChamsTeamCheck = true,
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
@@ -42,9 +42,9 @@ local Chams = {}
 local WeaponChams = {}
 local MyTeam = nil
 
-print("Stakware Loaded | AimbotTeamCheck:", Settings.AimbotTeamCheck, "| ChamsTeamCheck:", Settings.ChamsTeamCheck)
+print("Stakware Loaded | AimbotTC:", Settings.AimbotTeamCheck, "| ChamsTC:", Settings.ChamsTeamCheck)
 
-local CharactersFolder = Workspace:WaitForChild("Characters", 10)
+local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
 -- ================== AUTO TEAM DETECTION ==================
 local function DetectMyTeam()
@@ -64,26 +64,44 @@ local function DetectMyTeam()
     return nil
 end
 
--- Initial + Respawn detection
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.8)
-    DetectMyTeam()
+-- Strong initial detection when joining server
+task.spawn(function()
+    for i = 1, 8 do
+        task.wait(1)
+        if DetectMyTeam() then break end
+    end
 end)
 
-task.spawn(function()
+-- Respawn detection
+LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     DetectMyTeam()
 end)
 
--- Periodic team check every 5 seconds
+-- Periodic check every 5 seconds
 task.spawn(function()
     while true do
         task.wait(5)
-        if LocalPlayer.Character then
-            DetectMyTeam()
-        end
+        DetectMyTeam()
     end
 end)
+
+-- Watch for new players joining the Characters folder
+local function OnCharacterFolderChanged()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            task.wait() -- small yield to not lag
+            -- UpdateChams will handle removal if they joined our team
+        end
+    end
+end
+
+CharactersFolder.ChildAdded:Connect(OnCharacterFolderChanged)
+for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
+    if teamFolder:IsA("Folder") then
+        teamFolder.ChildAdded:Connect(OnCharacterFolderChanged)
+    end
+end
 
 local function GetPlayerTeam(plr)
     if not CharactersFolder or not plr.Character then return nil end
@@ -127,26 +145,39 @@ local function GetWeaponModel(plr)
     return debris:FindFirstChild(plr.Name .. "_Weapon")
 end
 
+local function RemovePlayer(plr)
+    if Chams[plr] then 
+        Chams[plr]:Destroy() 
+        Chams[plr] = nil 
+    end
+    if WeaponChams[plr] then 
+        WeaponChams[plr]:Destroy() 
+        WeaponChams[plr] = nil 
+    end
+end
+
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
     
-    -- Hostage check
     if Settings.IgnoreHostages then
         local theirTeam = GetPlayerTeam(plr)
-        if theirTeam == "Hostages" then 
-            RemovePlayer(plr) -- Force remove if hostage
-            return 
+        if theirTeam == "Hostages" then
+            RemovePlayer(plr)
+            return
         end
     end
     
-    -- If they are now on our team, remove chams
+    -- Remove chams if they are now on our team
     if Settings.ChamsTeamCheck and IsSameTeam(plr, true) then
         RemovePlayer(plr)
         return
     end
     
     local char = plr.Character
-    if not char then return end
+    if not char then 
+        RemovePlayer(plr)
+        return 
+    end
    
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then 
@@ -154,7 +185,7 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- Player Chams
+    -- Apply chams to enemies
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -162,7 +193,6 @@ local function UpdateChams(plr)
         Chams[plr].Adornee = char
     end
     
-    -- Weapon Chams
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
@@ -176,21 +206,10 @@ local function UpdateChams(plr)
     end
 end
 
-local function RemovePlayer(plr)
-    if Chams[plr] then 
-        Chams[plr]:Destroy() 
-        Chams[plr] = nil 
-    end
-    if WeaponChams[plr] then 
-        WeaponChams[plr]:Destroy() 
-        WeaponChams[plr] = nil 
-    end
-end
-
--- Better cleanup when players leave or change
+-- Cleanup
 Players.PlayerRemoving:Connect(RemovePlayer)
 
--- Main Chams Loop
+-- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -220,15 +239,14 @@ RunService.RenderStepped:Connect(function()
     Circle.Position = ScreenCenter
     Circle.Radius = Settings.FOV
     
-    if not aimbotEnabled then return end
-    if not MyTeam then return end
+    if not aimbotEnabled or not MyTeam then return end
     
     local bestTarget = nil
     local bestDist = Settings.FOV + 1
     
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
-        if IsSameTeam(plr, false) then continue end  -- false = for aimbot
+        if IsSameTeam(plr, false) then continue end
         
         local char = plr.Character
         if not char then continue end
@@ -258,4 +276,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Separate TeamCheck + improved teammate removal system loaded")
+print("✅ Full TeamCheck ESP System Loaded (Server Join + New Players + 5s Refresh)")
