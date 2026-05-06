@@ -2,14 +2,13 @@ local Settings = {
     -- ================== AIMBOT ==================
     AimbotEnabled = true,
     FOV = 120,
-    TargetPart = "Head", -- Head / HumanoidRootPart / UpperTorso
+    TargetPart = "Head",
     WallCheck = false,
     AimbotSmoothing = 0.48,
     ToggleKey = Enum.KeyCode.LeftAlt,
     
     -- ================== TEAM CHECK ==================
     TeamCheck = true,           -- Set to false to disable team check
-    MyTeam = "Counter-Terrorists", -- Change to "Terrorists" if you are on T side
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
@@ -40,20 +39,50 @@ local LocalPlayer = Players.LocalPlayer
 local aimbotEnabled = Settings.AimbotEnabled
 local Chams = {}
 local WeaponChams = {}
+local MyTeam = nil  -- Will be auto-detected
 
-print("Stakware Loaded | TeamCheck:", Settings.TeamCheck, "| MyTeam:", Settings.MyTeam)
+print("Stakware Loaded | TeamCheck:", Settings.TeamCheck)
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 10)
 
+-- ================== AUTO TEAM DETECTION ==================
+local function DetectMyTeam()
+    if not LocalPlayer.Character then return nil end
+    
+    local charName = LocalPlayer.Character.Name
+    
+    for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
+        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
+            MyTeam = teamFolder.Name
+            print("✅ Auto Team Detected: " .. MyTeam)
+            return MyTeam
+        end
+    end
+    return nil
+end
+
+-- Try to detect team immediately and on character respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    DetectMyTeam()
+end)
+
+-- Initial detection
+task.spawn(function()
+    task.wait(1)
+    if not MyTeam then
+        DetectMyTeam()
+    end
+end)
+
 local function GetPlayerTeam(plr)
     if not CharactersFolder then return nil end
+    if not plr.Character then return nil end
     
-    local char = plr.Character
-    if not char then return nil end
+    local charName = plr.Character.Name
     
-    -- Check which team folder contains this player's character
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
-        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(char.Name) then
+        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
             return teamFolder.Name
         end
     end
@@ -62,20 +91,18 @@ end
 
 local function IsSameTeam(plr)
     if not Settings.TeamCheck then return false end
-    
-    local myTeam = Settings.MyTeam
-    local theirTeam = GetPlayerTeam(plr)
-    
-    if not theirTeam then 
-        -- Debug when team can't be detected
-        -- print("TeamCheck Debug - Could not detect team for", plr.Name)
+    if not MyTeam then 
+        -- print("TeamCheck: My team not detected yet")
         return false 
     end
     
-    local isSame = (theirTeam == myTeam)
+    local theirTeam = GetPlayerTeam(plr)
+    if not theirTeam then return false end
     
-    -- Debug
-    -- print("TeamCheck Debug -", plr.Name, "| MyTeam:", myTeam, "| TheirTeam:", theirTeam, "| Same:", isSame)
+    local isSame = (theirTeam == MyTeam)
+    
+    -- Debug (uncomment if needed)
+    -- print("TeamCheck:", plr.Name, "| My:", MyTeam, "| Their:", theirTeam, "| Same:", isSame)
     
     return isSame
 end
@@ -115,7 +142,6 @@ local function UpdateChams(plr)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return end
     
-    -- Player Chams
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -123,7 +149,6 @@ local function UpdateChams(plr)
         Chams[plr].Adornee = char
     end
     
-    -- Weapon Chams
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
@@ -138,20 +163,12 @@ local function UpdateChams(plr)
 end
 
 local function RemovePlayer(plr)
-    if Chams[plr] then 
-        Chams[plr]:Destroy() 
-        Chams[plr] = nil 
-    end
-    if WeaponChams[plr] then 
-        WeaponChams[plr]:Destroy() 
-        WeaponChams[plr] = nil 
-    end
+    if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
+    if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
 end
 
--- Cleanup
 Players.PlayerRemoving:Connect(RemovePlayer)
 
--- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -182,6 +199,7 @@ RunService.RenderStepped:Connect(function()
     Circle.Radius = Settings.FOV
     
     if not aimbotEnabled then return end
+    if not MyTeam then return end -- Don't aimbot until team is detected
     
     local bestTarget = nil
     local bestDist = Settings.FOV + 1
@@ -218,4 +236,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("TeamCheck system initialized using Characters folder structure")
+print("Auto Team Detection initialized - Waiting for character...")
