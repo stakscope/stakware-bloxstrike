@@ -1,52 +1,33 @@
-task.spawn(function()
-    local Camera = workspace.CurrentCamera
-    local ScreenSize = Camera.ViewportSize
-    
-    local Overlay = Drawing.new("Square")
-    Overlay.Size = ScreenSize
-    Overlay.Position = Vector2.new(0, 0)
-    Overlay.Color = Color3.fromRGB(0, 0, 0)
-    Overlay.Filled = true
-    Overlay.Transparency = 1
-    Overlay.Visible = true
+local Settings = {
+    -- ================== AIMBOT ==================
+    AimbotEnabled = true,
+    FOV = 120,
+    TargetPart = "Head",
+    WallCheck = false,
+    AimbotSmoothing = 0.48,
+    ToggleKey = Enum.KeyCode.LeftAlt,
 
-    local Text = Drawing.new("Text")
-    Text.Text = "stakware"
-    Text.Size = 45
-    Text.Center = true
-    Text.Outline = true
-    Text.Color = Color3.fromRGB(255, 255, 255)
-    Text.Position = Vector2.new(ScreenSize.X / 2, ScreenSize.Y / 2)
-    Text.Transparency = 1
-    Text.Visible = true
+    -- ================== TEAM CHECK ==================
+    TeamCheck = false,           -- Change to true if you want team check
 
-    task.wait(1.5) 
+    -- ================== CHAMS ==================
+    PlayerChamsEnabled = true,
+    PlayerFillColor = Color3.fromRGB(255, 0, 255),
+    PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
+    PlayerFillTransparency = 0.4,
 
-    for i = 1, 30 do
-        local pulse = 1 - (math.sin(i / 5) * 0.2)
-        Text.Transparency = pulse
-        task.wait(0.05)
-    end
-    Text.Transparency = 1
+    WeaponChamsEnabled = true,
+    WeaponFillColor = Color3.fromRGB(0, 255, 255),
+    WeaponOutlineColor = Color3.fromRGB(0, 255, 100),
+    WeaponFillTransparency = 0.3,
 
-    local fadeSteps = 100
-    for i = 1, fadeSteps do
-        local alpha = 1 - (i / fadeSteps)
-        Overlay.Transparency = alpha
-        Text.Transparency = alpha
-        Text.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        Overlay.Size = Camera.ViewportSize
-        task.wait(0.05)
-    end
-
-    Overlay.Visible = false
-    Text.Visible = false
-    Overlay:Remove()
-    Text:Remove()
-end)
+    -- ================== OTHER ==================
+    MaxDistance = 300,
+    IgnoreHostages = true,
+}
 
 -- =====================================================
--- SERVICES & SETTINGS
+-- SCRIPT
 -- =====================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -54,29 +35,35 @@ local UserInputService = game:GetService("UserInputService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local Settings = {
-    FOV = 100,
-    TargetPart = "Head",
-    WallCheck = false,
-    ESPMaxDistance = 200,
-    AimbotSmoothing = 0.45
-}
+local aimbotEnabled = Settings.AimbotEnabled
 
-local aimbotEnabled = false
-
--- =====================================================
--- CHAMS (Player + Debris Weapons)
--- =====================================================
 local Chams = {}
 local WeaponChams = {}
 
-local MainColor = Color3.fromRGB(255, 0, 255)  -- Purple
+local function IsSameTeam(plr)
+    if not Settings.TeamCheck then return false end
+    
+    -- Check team folders / Team object
+    if plr.Team and LocalPlayer.Team then
+        return plr.Team == LocalPlayer.Team
+    end
+    
+    -- Fallback: Check team name from Character folder
+    local char = plr.Character
+    if char and char.Parent and char.Parent.Name then
+        local teamName = char.Parent.Name
+        local myTeam = LocalPlayer.Character and LocalPlayer.Character.Parent and LocalPlayer.Character.Parent.Name
+        return teamName == myTeam
+    end
+    
+    return false
+end
 
-local function CreateHighlight()
+local function CreateHighlight(fillColor, outlineColor, fillTrans)
     local h = Instance.new("Highlight")
-    h.FillColor = MainColor
-    h.OutlineColor = Color3.fromRGB(255, 255, 255)
-    h.FillTransparency = 0.35
+    h.FillColor = fillColor
+    h.OutlineColor = outlineColor
+    h.FillTransparency = fillTrans
     h.OutlineTransparency = 0
     h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     h.Enabled = true
@@ -87,34 +74,36 @@ end
 local function GetWeaponModel(plr)
     local debris = workspace:FindFirstChild("Debris")
     if not debris then return nil end
-
-    local weaponName = plr.Name .. "_Weapon"
-    local weapon = debris:FindFirstChild(weaponName)
-    return weapon
+    return debris:FindFirstChild(plr.Name .. "_Weapon")
 end
 
 local function UpdateChams(plr)
+    if Settings.IgnoreHostages and plr.Team and plr.Team.Name == "Hostages" then return end
+    if IsSameTeam(plr) then return end
+
     local char = plr.Character
     if not char then return end
     
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return end
 
-    -- Player Body
-    if not Chams[plr] then
-        Chams[plr] = CreateHighlight()
-    end
-    Chams[plr].Adornee = char
-
-    -- Weapon from Debris
-    local weapon = GetWeaponModel(plr)
-    if weapon then
-        if not WeaponChams[plr] then
-            WeaponChams[plr] = CreateHighlight()
+    if Settings.PlayerChamsEnabled then
+        if not Chams[plr] then
+            Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
         end
-        WeaponChams[plr].Adornee = weapon
-    elseif WeaponChams[plr] then
-        WeaponChams[plr].Adornee = nil
+        Chams[plr].Adornee = char
+    end
+
+    if Settings.WeaponChamsEnabled then
+        local weapon = GetWeaponModel(plr)
+        if weapon then
+            if not WeaponChams[plr] then
+                WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
+            end
+            WeaponChams[plr].Adornee = weapon
+        elseif WeaponChams[plr] then
+            WeaponChams[plr].Adornee = nil
+        end
     end
 end
 
@@ -123,14 +112,11 @@ local function RemovePlayer(plr)
     if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
 end
 
--- Setup
 Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function() task.wait(0.5) end)
 end)
-
 Players.PlayerRemoving:Connect(RemovePlayer)
 
--- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -139,31 +125,17 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- =====================================================
--- AIMBOT (UNTOUCHED - PERFECT)
--- =====================================================
+-- ================== AIMBOT ==================
 local Circle = Drawing.new("Circle")
-Circle.Radius = Settings.FOV
 Circle.Thickness = 2
 Circle.Color = Color3.fromRGB(255, 0, 0)
 Circle.Transparency = 0.6
 Circle.Filled = false
 Circle.Visible = true
 
-local function IsVisible(part)
-    if not Settings.WallCheck then return true end
-    local origin = Camera.CFrame.Position
-    local direction = (part.Position - origin).Unit * 1000
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    local result = workspace:Raycast(origin, direction, raycastParams)
-    return result and result.Instance:IsDescendantOf(part.Parent)
-end
-
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
+    if input.KeyCode == Settings.ToggleKey then
         aimbotEnabled = not aimbotEnabled
     end
 end)
@@ -180,6 +152,8 @@ RunService.RenderStepped:Connect(function()
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
+        if IsSameTeam(plr) then continue end
+
         local char = plr.Character
         if not char then continue end
         
@@ -188,7 +162,6 @@ RunService.RenderStepped:Connect(function()
         
         local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
         if not part then continue end
-        if not IsVisible(part) then continue end
 
         local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
         if onScreen then
@@ -208,3 +181,5 @@ RunService.RenderStepped:Connect(function()
         mousemoverel(smoothX, smoothY)
     end
 end)
+
+print("Stakware Loaded")
