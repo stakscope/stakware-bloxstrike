@@ -8,7 +8,7 @@ local Settings = {
     ToggleKey = Enum.KeyCode.LeftAlt,
     
     -- ================== TEAM CHECK ==================
-    TeamCheck = true,           -- Set to false to disable team check
+    TeamCheck = true,
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
@@ -39,7 +39,7 @@ local LocalPlayer = Players.LocalPlayer
 local aimbotEnabled = Settings.AimbotEnabled
 local Chams = {}
 local WeaponChams = {}
-local MyTeam = nil  -- Will be auto-detected
+local MyTeam = nil
 
 print("Stakware Loaded | TeamCheck:", Settings.TeamCheck)
 
@@ -48,39 +48,48 @@ local CharactersFolder = Workspace:WaitForChild("Characters", 10)
 -- ================== AUTO TEAM DETECTION ==================
 local function DetectMyTeam()
     if not LocalPlayer.Character then return nil end
+    if not CharactersFolder then return nil end
     
     local charName = LocalPlayer.Character.Name
     
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
         if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
-            MyTeam = teamFolder.Name
-            print("✅ Auto Team Detected: " .. MyTeam)
+            if MyTeam ~= teamFolder.Name then
+                MyTeam = teamFolder.Name
+                print("✅ Team Updated: " .. MyTeam)
+            end
             return MyTeam
         end
     end
     return nil
 end
 
--- Try to detect team immediately and on character respawn
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    DetectMyTeam()
-end)
-
 -- Initial detection
 task.spawn(function()
     task.wait(1)
-    if not MyTeam then
-        DetectMyTeam()
+    DetectMyTeam()
+end)
+
+-- Detect on respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.8)
+    DetectMyTeam()
+end)
+
+-- Periodic check every 5 seconds (this solves your issue)
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if LocalPlayer.Character then
+            DetectMyTeam()
+        end
     end
 end)
 
 local function GetPlayerTeam(plr)
-    if not CharactersFolder then return nil end
-    if not plr.Character then return nil end
+    if not CharactersFolder or not plr.Character then return nil end
     
     local charName = plr.Character.Name
-    
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
         if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
             return teamFolder.Name
@@ -91,20 +100,12 @@ end
 
 local function IsSameTeam(plr)
     if not Settings.TeamCheck then return false end
-    if not MyTeam then 
-        -- print("TeamCheck: My team not detected yet")
-        return false 
-    end
+    if not MyTeam then return false end
     
     local theirTeam = GetPlayerTeam(plr)
     if not theirTeam then return false end
     
-    local isSame = (theirTeam == MyTeam)
-    
-    -- Debug (uncomment if needed)
-    -- print("TeamCheck:", plr.Name, "| My:", MyTeam, "| Their:", theirTeam, "| Same:", isSame)
-    
-    return isSame
+    return theirTeam == MyTeam
 end
 
 local function CreateHighlight(fillColor, outlineColor, fillTrans)
@@ -128,7 +129,6 @@ end
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
     
-    -- Hostage check
     if Settings.IgnoreHostages then
         local theirTeam = GetPlayerTeam(plr)
         if theirTeam == "Hostages" then return end
@@ -199,7 +199,7 @@ RunService.RenderStepped:Connect(function()
     Circle.Radius = Settings.FOV
     
     if not aimbotEnabled then return end
-    if not MyTeam then return end -- Don't aimbot until team is detected
+    if not MyTeam then return end
     
     local bestTarget = nil
     local bestDist = Settings.FOV + 1
@@ -236,4 +236,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("Auto Team Detection initialized - Waiting for character...")
+print("Auto Team Detection + 5-second refresh initialized")
