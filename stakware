@@ -46,7 +46,8 @@ print("Stakware Loaded | AimbotTC:", Settings.AimbotTeamCheck, "| ChamsTC:", Set
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
--- ================== AUTO TEAM DETECTION ==================
+-- ================== FUNCTIONS ==================
+
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
     
@@ -64,45 +65,6 @@ local function DetectMyTeam()
     return nil
 end
 
--- Strong initial detection when joining server
-task.spawn(function()
-    for i = 1, 8 do
-        task.wait(1)
-        if DetectMyTeam() then break end
-    end
-end)
-
--- Respawn detection
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    DetectMyTeam()
-end)
-
--- Periodic check every 5 seconds
-task.spawn(function()
-    while true do
-        task.wait(5)
-        DetectMyTeam()
-    end
-end)
-
--- Watch for new players joining the Characters folder
-local function OnCharacterFolderChanged()
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            task.wait() -- small yield to not lag
-            -- UpdateChams will handle removal if they joined our team
-        end
-    end
-end
-
-CharactersFolder.ChildAdded:Connect(OnCharacterFolderChanged)
-for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
-    if teamFolder:IsA("Folder") then
-        teamFolder.ChildAdded:Connect(OnCharacterFolderChanged)
-    end
-end
-
 local function GetPlayerTeam(plr)
     if not CharactersFolder or not plr.Character then return nil end
     local charName = plr.Character.Name
@@ -113,6 +75,17 @@ local function GetPlayerTeam(plr)
         end
     end
     return nil
+end
+
+local function RemovePlayer(plr)
+    if Chams[plr] then 
+        Chams[plr]:Destroy() 
+        Chams[plr] = nil 
+    end
+    if WeaponChams[plr] then 
+        WeaponChams[plr]:Destroy() 
+        WeaponChams[plr] = nil 
+    end
 end
 
 local function IsSameTeam(plr, isForChams)
@@ -145,17 +118,6 @@ local function GetWeaponModel(plr)
     return debris:FindFirstChild(plr.Name .. "_Weapon")
 end
 
-local function RemovePlayer(plr)
-    if Chams[plr] then 
-        Chams[plr]:Destroy() 
-        Chams[plr] = nil 
-    end
-    if WeaponChams[plr] then 
-        WeaponChams[plr]:Destroy() 
-        WeaponChams[plr] = nil 
-    end
-end
-
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
     
@@ -167,7 +129,7 @@ local function UpdateChams(plr)
         end
     end
     
-    -- Remove chams if they are now on our team
+    -- Remove chams if they are on our team
     if Settings.ChamsTeamCheck and IsSameTeam(plr, true) then
         RemovePlayer(plr)
         return
@@ -185,7 +147,7 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- Apply chams to enemies
+    -- Apply Chams to enemies
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -206,10 +168,43 @@ local function UpdateChams(plr)
     end
 end
 
--- Cleanup
+-- ================== CONNECTIONS ==================
+
+-- Team Detection
+task.spawn(function()
+    for i = 1, 8 do
+        task.wait(1)
+        if DetectMyTeam() then break end
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    DetectMyTeam()
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(5)
+        DetectMyTeam()
+    end
+end)
+
+-- Folder watching for new players
+local function OnNewCharacter()
+    -- Just let the main loop handle it
+end
+
+CharactersFolder.ChildAdded:Connect(OnNewCharacter)
+for _, folder in ipairs(CharactersFolder:GetChildren()) do
+    if folder:IsA("Folder") then
+        folder.ChildAdded:Connect(OnNewCharacter)
+    end
+end
+
+-- Main Loops
 Players.PlayerRemoving:Connect(RemovePlayer)
 
--- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -276,4 +271,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Full TeamCheck ESP System Loaded (Server Join + New Players + 5s Refresh)")
+print("✅ Script Fixed & Loaded Successfully")
