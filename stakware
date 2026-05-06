@@ -2,13 +2,13 @@ local Settings = {
     -- ================== AIMBOT ==================
     AimbotEnabled = true,
     FOV = 120,
-    TargetPart = "Head",
+    TargetPart = "Head",           -- Head / HumanoidRootPart / UpperTorso
     WallCheck = false,
-    AimbotSmoothing = 0.48,
+    AimbotSmoothing = 0.48,        -- Lower = faster, Higher = smoother
     ToggleKey = Enum.KeyCode.LeftAlt,
 
     -- ================== TEAM CHECK ==================
-    TeamCheck = false,           -- Change to true if you want team check
+    TeamCheck = false,             -- Set to true if you want team check
 
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
@@ -27,7 +27,7 @@ local Settings = {
 }
 
 -- =====================================================
--- SCRIPT
+-- MAIN SCRIPT (Do not edit below unless you know what you're doing)
 -- =====================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -36,26 +36,20 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 local aimbotEnabled = Settings.AimbotEnabled
-
 local Chams = {}
 local WeaponChams = {}
+
+print("Stakware Loaded | TeamCheck:", Settings.TeamCheck)
 
 local function IsSameTeam(plr)
     if not Settings.TeamCheck then return false end
     
-    -- Check team folders / Team object
+    -- Debug
+    print("TeamCheck Debug -", plr.Name, "| My Team:", LocalPlayer.Team and LocalPlayer.Team.Name, "| Their Team:", plr.Team and plr.Team.Name)
+    
     if plr.Team and LocalPlayer.Team then
         return plr.Team == LocalPlayer.Team
     end
-    
-    -- Fallback: Check team name from Character folder
-    local char = plr.Character
-    if char and char.Parent and char.Parent.Name then
-        local teamName = char.Parent.Name
-        local myTeam = LocalPlayer.Character and LocalPlayer.Character.Parent and LocalPlayer.Character.Parent.Name
-        return teamName == myTeam
-    end
-    
     return false
 end
 
@@ -137,6 +131,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Settings.ToggleKey then
         aimbotEnabled = not aimbotEnabled
+        print("Aimbot toggled:", aimbotEnabled)
     end
 end)
 
@@ -181,5 +176,3 @@ RunService.RenderStepped:Connect(function()
         mousemoverel(smoothX, smoothY)
     end
 end)
-
-print("Stakware Loaded")
