@@ -15,14 +15,14 @@ local Settings = {
     PlayerChamsEnabled = true,
     PlayerFillColor = Color3.fromRGB(0, 255, 0),
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
-    PlayerFillTransparency = 0.65,        -- Even more transparent
+    PlayerFillTransparency = 0.5,
     
     HealthBasedChams = true,
     
     WeaponChamsEnabled = true,
     WeaponFillColor = Color3.fromRGB(0, 255, 255),      -- Cyan
-    WeaponOutlineColor = Color3.fromRGB(255, 0, 100),
-    WeaponFillTransparency = 0.0,                       -- Almost fully solid
+    WeaponOutlineColor = Color3.fromRGB(255, 0, 255),
+    WeaponFillTransparency = 0.0,                       -- Solid
     
     -- ================== OTHER ==================
     MaxDistance = 300,
@@ -41,12 +41,14 @@ local LocalPlayer = Players.LocalPlayer
 
 local aimbotEnabled = Settings.AimbotEnabled
 local Chams = {}
-local WeaponChams = {}
+local WeaponChams = {}  -- Now stores multiple highlights if needed
 local MyTeam = nil
 
-print("Stakware Loaded | HealthBased:", Settings.HealthBasedChams)
+print("Stakware Loaded | HealthBasedChams:", Settings.HealthBasedChams)
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
+
+-- ================== FUNCTIONS ==================
 
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
@@ -75,8 +77,16 @@ local function GetPlayerTeam(plr)
 end
 
 local function RemovePlayer(plr)
-    if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
-    if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
+    if Chams[plr] then 
+        Chams[plr]:Destroy() 
+        Chams[plr] = nil 
+    end
+    if WeaponChams[plr] then 
+        for _, h in pairs(WeaponChams[plr]) do
+            h:Destroy()
+        end
+        WeaponChams[plr] = nil 
+    end
 end
 
 local function IsSameTeam(plr, isForChams)
@@ -146,27 +156,42 @@ local function UpdateChams(plr)
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
         end
-        
         if Settings.HealthBasedChams and hum.MaxHealth > 0 then
             Chams[plr].FillColor = GetHealthColor(hum.Health, hum.MaxHealth)
         end
         Chams[plr].Adornee = char
     end
     
-    -- WEAPON CHAMS - Force priority
+    -- WEAPON CHAMS - New Method: Highlight all visible parts
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
             if not WeaponChams[plr] then
-                WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
+                WeaponChams[plr] = {}
             end
-            WeaponChams[plr].Adornee = weapon
             
-            -- Extra force to make weapon show on top
-            WeaponChams[plr].FillTransparency = Settings.WeaponFillTransparency
-            WeaponChams[plr].DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        elseif WeaponChams[plr] then
-            WeaponChams[plr].Adornee = nil
+            -- Apply highlight to every BasePart in the weapon
+            for _, part in ipairs(weapon:GetDescendants()) do
+                if part:IsA("BasePart") and part.Transparency < 1 then
+                    local found = false
+                    for _, existing in ipairs(WeaponChams[plr]) do
+                        if existing.Adornee == part then 
+                            found = true 
+                            break 
+                        end
+                    end
+                    if not found then
+                        local wh = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
+                        wh.Adornee = part
+                        table.insert(WeaponChams[plr], wh)
+                    end
+                end
+            end
+        else
+            if WeaponChams[plr] then
+                for _, h in pairs(WeaponChams[plr]) do h:Destroy() end
+                WeaponChams[plr] = nil
+            end
         end
     end
 end
@@ -259,4 +284,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Weapon Chams Priority v2 - Player very transparent + Weapon solid")
+print("✅ New Weapon Chams System: Individual Part Highlighting")
