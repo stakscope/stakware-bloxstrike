@@ -13,16 +13,16 @@ local Settings = {
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
-    PlayerFillColor = Color3.fromRGB(0, 255, 0),        -- Default full health color (Green)
+    PlayerFillColor = Color3.fromRGB(0, 255, 0),        -- Green when full HP
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
-    PlayerFillTransparency = 0.4,
+    PlayerFillTransparency = 0.45,
     
-    HealthBasedChams = true,     -- NEW: Enable health-based coloring
+    HealthBasedChams = true,
     
     WeaponChamsEnabled = true,
     WeaponFillColor = Color3.fromRGB(0, 255, 255),      -- Cyan
-    WeaponOutlineColor = Color3.fromRGB(255, 0, 255),   -- Magenta (better visibility)
-    WeaponFillTransparency = 0.25,                      -- Slightly more visible
+    WeaponOutlineColor = Color3.fromRGB(255, 100, 255),
+    WeaponFillTransparency = 0.1,                       -- Much more visible
     
     -- ================== OTHER ==================
     MaxDistance = 300,
@@ -44,7 +44,7 @@ local Chams = {}
 local WeaponChams = {}
 local MyTeam = nil
 
-print("Stakware Loaded | HealthBasedChams:", Settings.HealthBasedChams)
+print("Stakware Loaded | HealthBased:", Settings.HealthBasedChams)
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
@@ -69,7 +69,6 @@ end
 local function GetPlayerTeam(plr)
     if not CharactersFolder or not plr.Character then return nil end
     local charName = plr.Character.Name
-    
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
         if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
             return teamFolder.Name
@@ -79,33 +78,26 @@ local function GetPlayerTeam(plr)
 end
 
 local function RemovePlayer(plr)
-    if Chams[plr] then 
-        Chams[plr]:Destroy() 
-        Chams[plr] = nil 
-    end
-    if WeaponChams[plr] then 
-        WeaponChams[plr]:Destroy() 
-        WeaponChams[plr] = nil 
-    end
+    if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
+    if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
 end
 
 local function IsSameTeam(plr, isForChams)
     if not MyTeam then return false end
     local useTeamCheck = isForChams and Settings.ChamsTeamCheck or Settings.AimbotTeamCheck
     if not useTeamCheck then return false end
-    
     local theirTeam = GetPlayerTeam(plr)
     if not theirTeam then return false end
     return theirTeam == MyTeam
 end
 
-local function CreateHighlight(fillColor, outlineColor, fillTrans)
+local function CreateHighlight(fillColor, outlineColor, fillTrans, depthMode)
     local h = Instance.new("Highlight")
     h.FillColor = fillColor
     h.OutlineColor = outlineColor
     h.FillTransparency = fillTrans
     h.OutlineTransparency = 0
-    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.DepthMode = depthMode or Enum.HighlightDepthMode.AlwaysOnTop
     h.Enabled = true
     h.Parent = game:GetService("CoreGui")
     return h
@@ -113,7 +105,6 @@ end
 
 local function GetHealthColor(health, maxHealth)
     local percent = math.clamp(health / maxHealth, 0, 1)
-    -- Green (full) → Red (low)
     local r = (1 - percent) * 255
     local g = percent * 255
     return Color3.fromRGB(r, g, 50)
@@ -153,7 +144,7 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- === PLAYER CHAMS ===
+    -- PLAYER CHAMS
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -164,15 +155,15 @@ local function UpdateChams(plr)
         else
             Chams[plr].FillColor = Settings.PlayerFillColor
         end
-        
         Chams[plr].Adornee = char
     end
     
-    -- === WEAPON CHAMS ===
+    -- WEAPON CHAMS - Improved visibility
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
             if not WeaponChams[plr] then
+                -- Weapon uses lower transparency + AlwaysOnTop to fight over player cham
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
             end
             WeaponChams[plr].Adornee = weapon
@@ -203,12 +194,10 @@ task.spawn(function()
     end
 end)
 
--- Folder watching
-local function OnNewCharacter() end
-CharactersFolder.ChildAdded:Connect(OnNewCharacter)
+CharactersFolder.ChildAdded:Connect(function() end)
 for _, folder in ipairs(CharactersFolder:GetChildren()) do
     if folder:IsA("Folder") then
-        folder.ChildAdded:Connect(OnNewCharacter)
+        folder.ChildAdded:Connect(function() end)
     end
 end
 
@@ -254,7 +243,6 @@ RunService.RenderStepped:Connect(function()
         
         local char = plr.Character
         if not char then continue end
-       
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then continue end
        
@@ -280,4 +268,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Health-Based Chams + Weapon Visibility Improved")
+print("✅ Weapon Chams Priority Improved + Health Color Active")
