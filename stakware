@@ -1,7 +1,7 @@
 local Settings = {
     AimbotEnabled = true,
     SilentAimEnabled = true,
-    FOV = 120,
+    FOV = 200,
     TargetPart = "Head",
     AimbotSmoothing = 0.5,
     ToggleKey = Enum.KeyCode.LeftAlt,
