@@ -1,7 +1,7 @@
 local Settings = {
     -- ================== AIMBOT ==================
     AimbotEnabled = true,
-    SilentAimEnabled = true,        -- NEW
+    SilentAimEnabled = true,          -- Toggle Silent Aim separately if you want
     FOV = 120,
     TargetPart = "Head",
     AimbotSmoothing = 0.48,
@@ -41,10 +41,11 @@ local silentAimEnabled = Settings.SilentAimEnabled
 local Chams = {}
 local WeaponChams = {}
 local MyTeam = nil
+local ShootRemote = nil
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
--- ================== TEAM & CHAMS FUNCTIONS (unchanged) ==================
+-- ================== BASIC FUNCTIONS ==================
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
     local charName = LocalPlayer.Character.Name
@@ -173,24 +174,22 @@ local function GetClosestTarget()
     return closest
 end
 
-local ShootRemote = nil
-
--- Find the ShootWeapon remote
+-- Find ShootWeapon Remote
 task.spawn(function()
-    local network = Workspace:FindFirstChild("Network", true) or game
-    for _, v in ipairs(network:GetDescendants()) do
-        if v.Name == "ShootWeapon" then
+    task.wait(2)
+    for _, v in ipairs(game:GetDescendants()) do
+        if v.Name == "ShootWeapon" and v:IsA("RemoteEvent") then
             ShootRemote = v
-            print("✅ Found ShootWeapon Remote!")
+            print("✅ ShootWeapon Remote Found!")
             break
         end
     end
     if not ShootRemote then
-        print("⚠️ Could not find ShootWeapon remote")
+        print("⚠️ ShootWeapon Remote not found yet")
     end
 end)
 
--- Hook shooting
+-- Safe Namecall Hook
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 setreadonly(mt, false)
@@ -202,10 +201,10 @@ mt.__namecall = newcclosure(function(self, ...)
     if silentAimEnabled and ShootRemote and self == ShootRemote and method == "FireServer" then
         local targetPart = GetClosestTarget()
         if targetPart then
-            -- Modify direction to target (Silent Aim)
+            -- Try to modify the direction argument (most common in these games)
             if args[1] and typeof(args[1]) == "Vector3" then
                 local direction = (targetPart.Position - Camera.CFrame.Position).Unit
-                args[1] = direction * 1000 -- or whatever scale the game uses
+                args[1] = direction * 500
             end
         end
     end
@@ -228,7 +227,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Visual Aimbot + Toggle
+-- FOV Circle + Visual Aimbot
 local Circle = Drawing.new("Circle")
 Circle.Thickness = 2
 Circle.Color = Color3.fromRGB(255, 0, 0)
@@ -240,7 +239,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Settings.ToggleKey then
         aimbotEnabled = not aimbotEnabled
-        silentAimEnabled = aimbotEnabled  -- Sync for now
+        silentAimEnabled = aimbotEnabled
         print("Aimbot + Silent Aim:", aimbotEnabled)
     end
 end)
@@ -251,8 +250,7 @@ RunService.RenderStepped:Connect(function()
     Circle.Radius = Settings.FOV
     
     if not aimbotEnabled or not MyTeam then return end
-    
-    -- Normal aimbot (mouse movement) still works
+
     local bestTarget = nil
     local bestDist = Settings.FOV + 1
     
@@ -287,4 +285,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Bloxstrike Script Loaded with Silent Aim (ShootWeapon hooked)")
+print("✅ Bloxstrike Script Fixed & Loaded | FOV = " .. Settings.FOV)
