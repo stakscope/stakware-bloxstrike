@@ -13,16 +13,16 @@ local Settings = {
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
-    PlayerFillColor = Color3.fromRGB(0, 255, 0),        -- Green when full HP
+    PlayerFillColor = Color3.fromRGB(0, 255, 0),
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
-    PlayerFillTransparency = 0.45,
+    PlayerFillTransparency = 0.6,          -- More transparent so weapon shows better
     
     HealthBasedChams = true,
     
     WeaponChamsEnabled = true,
-    WeaponFillColor = Color3.fromRGB(0, 255, 255),      -- Cyan
-    WeaponOutlineColor = Color3.fromRGB(255, 100, 255),
-    WeaponFillTransparency = 0.1,                       -- Much more visible
+    WeaponFillColor = Color3.fromRGB(0, 255, 255),     -- Cyan
+    WeaponOutlineColor = Color3.fromRGB(255, 0, 255),
+    WeaponFillTransparency = 0.05,                     -- Almost solid
     
     -- ================== OTHER ==================
     MaxDistance = 300,
@@ -53,7 +53,6 @@ local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
     local charName = LocalPlayer.Character.Name
-    
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
         if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
             if MyTeam ~= teamFolder.Name then
@@ -91,13 +90,13 @@ local function IsSameTeam(plr, isForChams)
     return theirTeam == MyTeam
 end
 
-local function CreateHighlight(fillColor, outlineColor, fillTrans, depthMode)
+local function CreateHighlight(fillColor, outlineColor, fillTrans)
     local h = Instance.new("Highlight")
     h.FillColor = fillColor
     h.OutlineColor = outlineColor
     h.FillTransparency = fillTrans
     h.OutlineTransparency = 0
-    h.DepthMode = depthMode or Enum.HighlightDepthMode.AlwaysOnTop
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     h.Enabled = true
     h.Parent = game:GetService("CoreGui")
     return h
@@ -144,7 +143,7 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- PLAYER CHAMS
+    -- PLAYER CHAMS (more transparent)
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -158,12 +157,11 @@ local function UpdateChams(plr)
         Chams[plr].Adornee = char
     end
     
-    -- WEAPON CHAMS - Improved visibility
+    -- WEAPON CHAMS (high priority)
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
             if not WeaponChams[plr] then
-                -- Weapon uses lower transparency + AlwaysOnTop to fight over player cham
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
             end
             WeaponChams[plr].Adornee = weapon
@@ -193,13 +191,6 @@ task.spawn(function()
         DetectMyTeam()
     end
 end)
-
-CharactersFolder.ChildAdded:Connect(function() end)
-for _, folder in ipairs(CharactersFolder:GetChildren()) do
-    if folder:IsA("Folder") then
-        folder.ChildAdded:Connect(function() end)
-    end
-end
 
 Players.PlayerRemoving:Connect(RemovePlayer)
 
@@ -268,4 +259,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Weapon Chams Priority Improved + Health Color Active")
+print("✅ Weapon Priority Fixed - Player more transparent, Weapon almost solid")
