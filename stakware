@@ -13,14 +13,16 @@ local Settings = {
     
     -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
-    PlayerFillColor = Color3.fromRGB(255, 0, 255),
+    PlayerFillColor = Color3.fromRGB(0, 255, 0),        -- Default full health color (Green)
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
     PlayerFillTransparency = 0.4,
     
+    HealthBasedChams = true,     -- NEW: Enable health-based coloring
+    
     WeaponChamsEnabled = true,
-    WeaponFillColor = Color3.fromRGB(0, 255, 255),
-    WeaponOutlineColor = Color3.fromRGB(0, 255, 100),
-    WeaponFillTransparency = 0.3,
+    WeaponFillColor = Color3.fromRGB(0, 255, 255),      -- Cyan
+    WeaponOutlineColor = Color3.fromRGB(255, 0, 255),   -- Magenta (better visibility)
+    WeaponFillTransparency = 0.25,                      -- Slightly more visible
     
     -- ================== OTHER ==================
     MaxDistance = 300,
@@ -42,7 +44,7 @@ local Chams = {}
 local WeaponChams = {}
 local MyTeam = nil
 
-print("Stakware Loaded | AimbotTC:", Settings.AimbotTeamCheck, "| ChamsTC:", Settings.ChamsTeamCheck)
+print("Stakware Loaded | HealthBasedChams:", Settings.HealthBasedChams)
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
@@ -50,7 +52,6 @@ local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
-    
     local charName = LocalPlayer.Character.Name
     
     for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
@@ -90,13 +91,11 @@ end
 
 local function IsSameTeam(plr, isForChams)
     if not MyTeam then return false end
-    
     local useTeamCheck = isForChams and Settings.ChamsTeamCheck or Settings.AimbotTeamCheck
     if not useTeamCheck then return false end
     
     local theirTeam = GetPlayerTeam(plr)
     if not theirTeam then return false end
-    
     return theirTeam == MyTeam
 end
 
@@ -110,6 +109,14 @@ local function CreateHighlight(fillColor, outlineColor, fillTrans)
     h.Enabled = true
     h.Parent = game:GetService("CoreGui")
     return h
+end
+
+local function GetHealthColor(health, maxHealth)
+    local percent = math.clamp(health / maxHealth, 0, 1)
+    -- Green (full) → Red (low)
+    local r = (1 - percent) * 255
+    local g = percent * 255
+    return Color3.fromRGB(r, g, 50)
 end
 
 local function GetWeaponModel(plr)
@@ -129,7 +136,6 @@ local function UpdateChams(plr)
         end
     end
     
-    -- Remove chams if they are on our team
     if Settings.ChamsTeamCheck and IsSameTeam(plr, true) then
         RemovePlayer(plr)
         return
@@ -147,14 +153,22 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- Apply Chams to enemies
+    -- === PLAYER CHAMS ===
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
         end
+        
+        if Settings.HealthBasedChams and hum.MaxHealth > 0 then
+            Chams[plr].FillColor = GetHealthColor(hum.Health, hum.MaxHealth)
+        else
+            Chams[plr].FillColor = Settings.PlayerFillColor
+        end
+        
         Chams[plr].Adornee = char
     end
     
+    -- === WEAPON CHAMS ===
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
@@ -170,7 +184,6 @@ end
 
 -- ================== CONNECTIONS ==================
 
--- Team Detection
 task.spawn(function()
     for i = 1, 8 do
         task.wait(1)
@@ -190,11 +203,8 @@ task.spawn(function()
     end
 end)
 
--- Folder watching for new players
-local function OnNewCharacter()
-    -- Just let the main loop handle it
-end
-
+-- Folder watching
+local function OnNewCharacter() end
 CharactersFolder.ChildAdded:Connect(OnNewCharacter)
 for _, folder in ipairs(CharactersFolder:GetChildren()) do
     if folder:IsA("Folder") then
@@ -202,7 +212,6 @@ for _, folder in ipairs(CharactersFolder:GetChildren()) do
     end
 end
 
--- Main Loops
 Players.PlayerRemoving:Connect(RemovePlayer)
 
 RunService.RenderStepped:Connect(function()
@@ -271,4 +280,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Script Fixed & Loaded Successfully")
+print("✅ Health-Based Chams + Weapon Visibility Improved")
