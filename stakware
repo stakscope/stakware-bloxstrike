@@ -1,17 +1,14 @@
 local Settings = {
-    -- ================== AIMBOT ==================
     AimbotEnabled = true,
     SilentAimEnabled = true,
     FOV = 120,
     TargetPart = "Head",
-    AimbotSmoothing = 0.48,
+    AimbotSmoothing = 0.5,
     ToggleKey = Enum.KeyCode.LeftAlt,
     
-    -- ================== TEAM CHECK ==================
     AimbotTeamCheck = true,
     ChamsTeamCheck = true,
     
-    -- ================== CHAMS ==================
     PlayerChamsEnabled = true,
     PlayerFillColor = Color3.fromRGB(0, 255, 0),
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
@@ -23,12 +20,11 @@ local Settings = {
     WeaponOutlineColor = Color3.fromRGB(255, 255, 255),
     WeaponFillTransparency = 0.25,
     
-    -- ================== OTHER ==================
     MaxDistance = 300,
     IgnoreHostages = true,
 }
 
--- =====================================================
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -36,8 +32,6 @@ local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local aimbotEnabled = Settings.AimbotEnabled
-local silentAimEnabled = Settings.SilentAimEnabled
 local Chams = {}
 local WeaponChams = {}
 local MyTeam = nil
@@ -45,45 +39,34 @@ local ShootRemote = nil
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
--- ================== BASIC FUNCTIONS ==================
-local function DetectMyTeam()
-    if not LocalPlayer.Character or not CharactersFolder then return nil end
-    local charName = LocalPlayer.Character.Name
-    for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
-        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
-            if MyTeam ~= teamFolder.Name then
-                MyTeam = teamFolder.Name
-                print("✅ Team Updated:", MyTeam)
+-- Team Detection
+task.spawn(function()
+    task.wait(2)
+    for i = 1, 10 do
+        if LocalPlayer.Character then
+            local charName = LocalPlayer.Character.Name
+            for _, folder in ipairs(CharactersFolder:GetChildren()) do
+                if folder:FindFirstChild(charName) then
+                    MyTeam = folder.Name
+                    print("✅ Team Detected:", MyTeam)
+                    break
+                end
             end
-            return MyTeam
         end
+        task.wait(1)
     end
-    return nil
-end
+end)
 
-local function GetPlayerTeam(plr)
-    if not CharactersFolder or not plr.Character then return nil end
+local function IsSameTeam(plr)
+    if not Settings.AimbotTeamCheck or not MyTeam then return false end
+    if not plr.Character then return false end
     local charName = plr.Character.Name
-    for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
-        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
-            return teamFolder.Name
+    for _, folder in ipairs(CharactersFolder:GetChildren()) do
+        if folder:FindFirstChild(charName) and folder.Name == MyTeam then
+            return true
         end
     end
-    return nil
-end
-
-local function RemovePlayer(plr)
-    if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
-    if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
-end
-
-local function IsSameTeam(plr, isForChams)
-    if not MyTeam then return false end
-    local useTeamCheck = isForChams and Settings.ChamsTeamCheck or Settings.AimbotTeamCheck
-    if not useTeamCheck then return false end
-    local theirTeam = GetPlayerTeam(plr)
-    if not theirTeam then return false end
-    return theirTeam == MyTeam
+    return false
 end
 
 local function CreateHighlight(fillColor, outlineColor, fillTrans)
@@ -99,26 +82,22 @@ local function CreateHighlight(fillColor, outlineColor, fillTrans)
 end
 
 local function GetHealthColor(health, maxHealth)
-    local percent = math.clamp(health / maxHealth, 0, 1)
-    local r = (1 - percent) * 255
-    local g = percent * 255
-    return Color3.fromRGB(r, g, 50)
+    local p = math.clamp(health / maxHealth, 0, 1)
+    return Color3.fromRGB((1-p)*255, p*255, 50)
 end
 
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
-    if Settings.IgnoreHostages and GetPlayerTeam(plr) == "Hostages" then RemovePlayer(plr) return end
-    if Settings.ChamsTeamCheck and IsSameTeam(plr, true) then RemovePlayer(plr) return end
+    if Settings.IgnoreHostages and GetPlayerTeam and GetPlayerTeam(plr) == "Hostages" then return end
+    if Settings.ChamsTeamCheck and IsSameTeam(plr) then return end
 
     local char = plr.Character
-    if not char then RemovePlayer(plr) return end
+    if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then RemovePlayer(plr) return end
+    if not hum or hum.Health <= 0 then return end
 
     if Settings.PlayerChamsEnabled then
-        if not Chams[plr] then
-            Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
-        end
+        if not Chams[plr] then Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency) end
         if Settings.HealthBasedChams then
             Chams[plr].FillColor = GetHealthColor(hum.Health, hum.MaxHealth)
         end
@@ -133,45 +112,13 @@ local function UpdateChams(plr)
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
             end
             WeaponChams[plr].Adornee = weapon
-        elseif WeaponChams[plr] then
-            WeaponChams[plr].Adornee = nil
         end
     end
-end
-
--- ================== SILENT AIM ==================
-local function GetClosestTarget()
-    local closest = nil
-    local bestDist = Settings.FOV + 1
-    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LocalPlayer then continue end
-        if IsSameTeam(plr, false) then continue end
-
-        local char = plr.Character
-        if not char then continue end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then continue end
-
-        local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
-        if not part then continue end
-
-        local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
-        if onScreen then
-            local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-            if dist < bestDist then
-                closest = part
-                bestDist = dist
-            end
-        end
-    end
-    return closest
 end
 
 -- Find Remote
 task.spawn(function()
-    task.wait(2)
+    task.wait(3)
     for _, v in ipairs(game:GetDescendants()) do
         if v.Name == "ShootWeapon" and v:IsA("RemoteEvent") then
             ShootRemote = v
@@ -181,43 +128,55 @@ task.spawn(function()
     end
 end)
 
--- Safe Silent Aim Hook
-local mt = getrawmetatable(game)
-local old = mt.__namecall
-setreadonly(mt, false)
-
-mt.__namecall = newcclosure(function(self, ...)
+-- Silent Aim Hook (Safer version)
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
     local method = getnamecallmethod()
 
     if silentAimEnabled and ShootRemote and self == ShootRemote and method == "FireServer" then
-        local target = GetClosestTarget()
-        if target then
-            if args[1] and typeof(args[1]) == "Vector3" then
-                args[1] = (target.Position - Camera.CFrame.Position).Unit * 1000
+        local closest = nil
+        local best = Settings.FOV + 1
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr == LocalPlayer or IsSameTeam(plr) then continue end
+            local char = plr.Character
+            if not char then continue end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+
+            local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
+            if part then
+                local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                    if d < best then
+                        closest = part
+                        best = d
+                    end
+                end
             end
+        end
+
+        if closest and args[1] and typeof(args[1]) == "Vector3" then
+            args[1] = (closest.Position - Camera.CFrame.Position).Unit * 1000
         end
     end
 
-    return old(self, unpack(args))
+    return oldNamecall(self, unpack(args))
 end)
 
-setreadonly(mt, true)
-
--- ================== CONNECTIONS ==================
-task.spawn(function() for i=1,8 do task.wait(1) if DetectMyTeam() then break end end end)
-LocalPlayer.CharacterAdded:Connect(function() task.wait(1) DetectMyTeam() end)
-task.spawn(function() while true do task.wait(5) DetectMyTeam() end end)
-
-Players.PlayerRemoving:Connect(RemovePlayer)
-
+-- Main Loops
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then UpdateChams(plr) end
+        if plr ~= LocalPlayer then
+            UpdateChams(plr)
+        end
     end
 end)
 
--- FOV Circle
+-- FOV Circle + Visual Aimbot
 local Circle = Drawing.new("Circle")
 Circle.Thickness = 2
 Circle.Color = Color3.fromRGB(255, 0, 0)
@@ -225,52 +184,13 @@ Circle.Transparency = 0.6
 Circle.Filled = false
 Circle.Visible = true
 
-UserInputService.InputBegan:Connect(function(input, gp)
+UserInputService.InputBegan:Connect(function(i, gp)
     if gp then return end
-    if input.KeyCode == Settings.ToggleKey then
-        aimbotEnabled = not aimbotEnabled
-        silentAimEnabled = aimbotEnabled
-        print("Aimbot + Silent:", aimbotEnabled)
+    if i.KeyCode == Settings.ToggleKey then
+        Settings.AimbotEnabled = not Settings.AimbotEnabled
+        Settings.SilentAimEnabled = Settings.AimbotEnabled
+        print("Aimbot:", Settings.AimbotEnabled)
     end
 end)
 
-RunService.RenderStepped:Connect(function()
-    local sc = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    Circle.Position = sc
-    Circle.Radius = Settings.FOV
-
-    if not aimbotEnabled or not MyTeam then return end
-
-    local bestTarget = nil
-    local bestDist = Settings.FOV + 1
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LocalPlayer then continue end
-        if IsSameTeam(plr, false) then continue end
-        
-        local char = plr.Character
-        if not char then continue end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then continue end
-       
-        local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
-        if not part then continue end
-        
-        local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
-        if onScreen then
-            local dist = (Vector2.new(sp.X, sp.Y) - sc).Magnitude
-            if dist < bestDist then
-                bestTarget = Vector2.new(sp.X, sp.Y)
-                bestDist = dist
-            end
-        end
-    end
-    
-    if bestTarget then
-        local dx = bestTarget.X - sc.X
-        local dy = bestTarget.Y - sc.Y
-        mousemoverel(dx * Settings.AimbotSmoothing, dy * Settings.AimbotSmoothing)
-    end
-end)
-
-print("✅ Bloxstrike Script Reloaded | FOV = " .. Settings.FOV)
+print("✅ Bloxstrike Simple Script Loaded | FOV =", Settings.FOV)
