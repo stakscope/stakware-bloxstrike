@@ -15,14 +15,14 @@ local Settings = {
     PlayerChamsEnabled = true,
     PlayerFillColor = Color3.fromRGB(0, 255, 0),
     PlayerOutlineColor = Color3.fromRGB(255, 255, 255),
-    PlayerFillTransparency = 0.6,          -- More transparent so weapon shows better
+    PlayerFillTransparency = 0.65,        -- Even more transparent
     
     HealthBasedChams = true,
     
     WeaponChamsEnabled = true,
-    WeaponFillColor = Color3.fromRGB(0, 255, 255),     -- Cyan
-    WeaponOutlineColor = Color3.fromRGB(255, 0, 255),
-    WeaponFillTransparency = 0.05,                     -- Almost solid
+    WeaponFillColor = Color3.fromRGB(0, 255, 255),      -- Cyan
+    WeaponOutlineColor = Color3.fromRGB(255, 0, 100),
+    WeaponFillTransparency = 0.0,                       -- Almost fully solid
     
     -- ================== OTHER ==================
     MaxDistance = 300,
@@ -47,8 +47,6 @@ local MyTeam = nil
 print("Stakware Loaded | HealthBased:", Settings.HealthBasedChams)
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
-
--- ================== FUNCTIONS ==================
 
 local function DetectMyTeam()
     if not LocalPlayer.Character or not CharactersFolder then return nil end
@@ -143,7 +141,7 @@ local function UpdateChams(plr)
         return 
     end
     
-    -- PLAYER CHAMS (more transparent)
+    -- PLAYER CHAMS
     if Settings.PlayerChamsEnabled then
         if not Chams[plr] then
             Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
@@ -151,13 +149,11 @@ local function UpdateChams(plr)
         
         if Settings.HealthBasedChams and hum.MaxHealth > 0 then
             Chams[plr].FillColor = GetHealthColor(hum.Health, hum.MaxHealth)
-        else
-            Chams[plr].FillColor = Settings.PlayerFillColor
         end
         Chams[plr].Adornee = char
     end
     
-    -- WEAPON CHAMS (high priority)
+    -- WEAPON CHAMS - Force priority
     if Settings.WeaponChamsEnabled then
         local weapon = GetWeaponModel(plr)
         if weapon then
@@ -165,6 +161,10 @@ local function UpdateChams(plr)
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
             end
             WeaponChams[plr].Adornee = weapon
+            
+            -- Extra force to make weapon show on top
+            WeaponChams[plr].FillTransparency = Settings.WeaponFillTransparency
+            WeaponChams[plr].DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         elseif WeaponChams[plr] then
             WeaponChams[plr].Adornee = nil
         end
@@ -259,4 +259,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Weapon Priority Fixed - Player more transparent, Weapon almost solid")
+print("✅ Weapon Chams Priority v2 - Player very transparent + Weapon solid")
