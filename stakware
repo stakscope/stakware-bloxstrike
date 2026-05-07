@@ -1,7 +1,7 @@
 local Settings = {
     AimbotEnabled = true,
     SilentAimEnabled = true,
-    FOV = 200,
+    FOV = 90,                    -- Start with 90, you can change it
     TargetPart = "Head",
     AimbotSmoothing = 0.5,
     ToggleKey = Enum.KeyCode.LeftAlt,
@@ -19,12 +19,8 @@ local Settings = {
     WeaponFillColor = Color3.fromRGB(0, 255, 0),
     WeaponOutlineColor = Color3.fromRGB(255, 255, 255),
     WeaponFillTransparency = 0.25,
-    
-    MaxDistance = 300,
-    IgnoreHostages = true,
 }
 
--- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -41,39 +37,39 @@ local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
 -- Team Detection
 task.spawn(function()
-    task.wait(2)
-    for i = 1, 10 do
+    task.wait(1.5)
+    while true do
         if LocalPlayer.Character then
-            local charName = LocalPlayer.Character.Name
+            local name = LocalPlayer.Character.Name
             for _, folder in ipairs(CharactersFolder:GetChildren()) do
-                if folder:FindFirstChild(charName) then
-                    MyTeam = folder.Name
-                    print("✅ Team Detected:", MyTeam)
+                if folder:FindFirstChild(name) then
+                    if MyTeam ~= folder.Name then
+                        MyTeam = folder.Name
+                        print("✅ Team:", MyTeam)
+                    end
                     break
                 end
             end
         end
-        task.wait(1)
+        task.wait(5)
     end
 end)
 
 local function IsSameTeam(plr)
     if not Settings.AimbotTeamCheck or not MyTeam then return false end
     if not plr.Character then return false end
-    local charName = plr.Character.Name
-    for _, folder in ipairs(CharactersFolder:GetChildren()) do
-        if folder:FindFirstChild(charName) and folder.Name == MyTeam then
-            return true
-        end
+    local name = plr.Character.Name
+    for _, f in ipairs(CharactersFolder:GetChildren()) do
+        if f:FindFirstChild(name) and f.Name == MyTeam then return true end
     end
     return false
 end
 
-local function CreateHighlight(fillColor, outlineColor, fillTrans)
+local function CreateHighlight(c1, c2, t)
     local h = Instance.new("Highlight")
-    h.FillColor = fillColor
-    h.OutlineColor = outlineColor
-    h.FillTransparency = fillTrans
+    h.FillColor = c1
+    h.OutlineColor = c2
+    h.FillTransparency = t
     h.OutlineTransparency = 0
     h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     h.Enabled = true
@@ -81,14 +77,13 @@ local function CreateHighlight(fillColor, outlineColor, fillTrans)
     return h
 end
 
-local function GetHealthColor(health, maxHealth)
-    local p = math.clamp(health / maxHealth, 0, 1)
+local function GetHealthColor(h, mh)
+    local p = math.clamp(h / mh, 0, 1)
     return Color3.fromRGB((1-p)*255, p*255, 50)
 end
 
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
-    if Settings.IgnoreHostages and GetPlayerTeam and GetPlayerTeam(plr) == "Hostages" then return end
     if Settings.ChamsTeamCheck and IsSameTeam(plr) then return end
 
     local char = plr.Character
@@ -97,7 +92,9 @@ local function UpdateChams(plr)
     if not hum or hum.Health <= 0 then return end
 
     if Settings.PlayerChamsEnabled then
-        if not Chams[plr] then Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency) end
+        if not Chams[plr] then
+            Chams[plr] = CreateHighlight(Settings.PlayerFillColor, Settings.PlayerOutlineColor, Settings.PlayerFillTransparency)
+        end
         if Settings.HealthBasedChams then
             Chams[plr].FillColor = GetHealthColor(hum.Health, hum.MaxHealth)
         end
@@ -106,73 +103,74 @@ local function UpdateChams(plr)
 
     if Settings.WeaponChamsEnabled then
         local debris = Workspace:FindFirstChild("Debris")
-        local weapon = debris and debris:FindFirstChild(plr.Name .. "_Weapon")
-        if weapon then
+        local w = debris and debris:FindFirstChild(plr.Name.."_Weapon")
+        if w then
             if not WeaponChams[plr] then
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
             end
-            WeaponChams[plr].Adornee = weapon
+            WeaponChams[plr].Adornee = w
         end
     end
 end
 
 -- Find Remote
 task.spawn(function()
-    task.wait(3)
+    task.wait(2)
     for _, v in ipairs(game:GetDescendants()) do
         if v.Name == "ShootWeapon" and v:IsA("RemoteEvent") then
             ShootRemote = v
-            print("✅ ShootWeapon Remote Found!")
+            print("✅ ShootWeapon Found!")
             break
         end
     end
 end)
 
--- Silent Aim Hook (Safer version)
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
+-- ================== SILENT AIM (Safer) ==================
+local function GetClosestTarget()
+    local best, dist = nil, Settings.FOV + 1
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 
-    if silentAimEnabled and ShootRemote and self == ShootRemote and method == "FireServer" then
-        local closest = nil
-        local best = Settings.FOV + 1
-        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    for _, plr in Players:GetPlayers() do
+        if plr == LocalPlayer or IsSameTeam(plr) then continue end
+        local char = plr.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
 
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr == LocalPlayer or IsSameTeam(plr) then continue end
-            local char = plr.Character
-            if not char then continue end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then continue end
-
-            local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
-            if part then
-                local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
-                if onScreen then
-                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-                    if d < best then
-                        closest = part
-                        best = d
-                    end
+        local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
+        if part then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then
+                local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if d < dist then
+                    best = part
+                    dist = d
                 end
             end
         end
-
-        if closest and args[1] and typeof(args[1]) == "Vector3" then
-            args[1] = (closest.Position - Camera.CFrame.Position).Unit * 1000
-        end
     end
+    return best
+end
 
-    return oldNamecall(self, unpack(args))
-end)
+-- Try hook (safer)
+if hookmetamethod then
+    local oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = {...}
+        if silentAimEnabled and ShootRemote and self == ShootRemote and getnamecallmethod() == "FireServer" then
+            local target = GetClosestTarget()
+            if target and args[1] and typeof(args[1]) == "Vector3" then
+                args[1] = (target.Position - Camera.CFrame.Position).Unit * 1000
+            end
+        end
+        return oldNamecall(self, unpack(args))
+    end)
+    print("✅ Hookmetamethod applied")
+end
 
--- Main Loops
+-- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            UpdateChams(plr)
-        end
+        if plr ~= LocalPlayer then UpdateChams(plr) end
     end
 end)
 
@@ -189,8 +187,8 @@ UserInputService.InputBegan:Connect(function(i, gp)
     if i.KeyCode == Settings.ToggleKey then
         Settings.AimbotEnabled = not Settings.AimbotEnabled
         Settings.SilentAimEnabled = Settings.AimbotEnabled
-        print("Aimbot:", Settings.AimbotEnabled)
+        print("Aimbot + Silent Aim:", Settings.AimbotEnabled)
     end
 end)
 
-print("✅ Bloxstrike Simple Script Loaded | FOV =", Settings.FOV)
+print("✅ Bloxstrike Script Loaded | FOV:", Settings.FOV, "| Silent Aim:", Settings.SilentAimEnabled)
