@@ -1,7 +1,7 @@
 local Settings = {
     -- ================== AIMBOT ==================
     AimbotEnabled = true,
-    SilentAimEnabled = true,          -- Toggle Silent Aim separately if you want
+    SilentAimEnabled = true,
     FOV = 120,
     TargetPart = "Head",
     AimbotSmoothing = 0.48,
@@ -105,12 +105,6 @@ local function GetHealthColor(health, maxHealth)
     return Color3.fromRGB(r, g, 50)
 end
 
-local function GetWeaponModel(plr)
-    local debris = Workspace:FindFirstChild("Debris")
-    if not debris then return nil end
-    return debris:FindFirstChild(plr.Name .. "_Weapon")
-end
-
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
     if Settings.IgnoreHostages and GetPlayerTeam(plr) == "Hostages" then RemovePlayer(plr) return end
@@ -132,7 +126,8 @@ local function UpdateChams(plr)
     end
 
     if Settings.WeaponChamsEnabled then
-        local weapon = GetWeaponModel(plr)
+        local debris = Workspace:FindFirstChild("Debris")
+        local weapon = debris and debris:FindFirstChild(plr.Name .. "_Weapon")
         if weapon then
             if not WeaponChams[plr] then
                 WeaponChams[plr] = CreateHighlight(Settings.WeaponFillColor, Settings.WeaponOutlineColor, Settings.WeaponFillTransparency)
@@ -174,7 +169,7 @@ local function GetClosestTarget()
     return closest
 end
 
--- Find ShootWeapon Remote
+-- Find Remote
 task.spawn(function()
     task.wait(2)
     for _, v in ipairs(game:GetDescendants()) do
@@ -184,32 +179,27 @@ task.spawn(function()
             break
         end
     end
-    if not ShootRemote then
-        print("⚠️ ShootWeapon Remote not found yet")
-    end
 end)
 
--- Safe Namecall Hook
+-- Safe Silent Aim Hook
 local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
+local old = mt.__namecall
 setreadonly(mt, false)
 
 mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
     local args = {...}
+    local method = getnamecallmethod()
 
     if silentAimEnabled and ShootRemote and self == ShootRemote and method == "FireServer" then
-        local targetPart = GetClosestTarget()
-        if targetPart then
-            -- Try to modify the direction argument (most common in these games)
+        local target = GetClosestTarget()
+        if target then
             if args[1] and typeof(args[1]) == "Vector3" then
-                local direction = (targetPart.Position - Camera.CFrame.Position).Unit
-                args[1] = direction * 500
+                args[1] = (target.Position - Camera.CFrame.Position).Unit * 1000
             end
         end
     end
 
-    return oldNamecall(self, unpack(args))
+    return old(self, unpack(args))
 end)
 
 setreadonly(mt, true)
@@ -227,7 +217,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- FOV Circle + Visual Aimbot
+-- FOV Circle
 local Circle = Drawing.new("Circle")
 Circle.Thickness = 2
 Circle.Color = Color3.fromRGB(255, 0, 0)
@@ -240,20 +230,20 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Settings.ToggleKey then
         aimbotEnabled = not aimbotEnabled
         silentAimEnabled = aimbotEnabled
-        print("Aimbot + Silent Aim:", aimbotEnabled)
+        print("Aimbot + Silent:", aimbotEnabled)
     end
 end)
 
 RunService.RenderStepped:Connect(function()
-    local ScreenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    Circle.Position = ScreenCenter
+    local sc = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    Circle.Position = sc
     Circle.Radius = Settings.FOV
-    
+
     if not aimbotEnabled or not MyTeam then return end
 
     local bestTarget = nil
     local bestDist = Settings.FOV + 1
-    
+
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
         if IsSameTeam(plr, false) then continue end
@@ -266,23 +256,21 @@ RunService.RenderStepped:Connect(function()
         local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("HumanoidRootPart")
         if not part then continue end
         
-        local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
         if onScreen then
-            local dist = (Vector2.new(screenPos.X, screenPos.Y) - ScreenCenter).Magnitude
+            local dist = (Vector2.new(sp.X, sp.Y) - sc).Magnitude
             if dist < bestDist then
-                bestTarget = Vector2.new(screenPos.X, screenPos.Y)
+                bestTarget = Vector2.new(sp.X, sp.Y)
                 bestDist = dist
             end
         end
     end
     
     if bestTarget then
-        local deltaX = bestTarget.X - ScreenCenter.X
-        local deltaY = bestTarget.Y - ScreenCenter.Y
-        local smoothX = deltaX * Settings.AimbotSmoothing
-        local smoothY = deltaY * Settings.AimbotSmoothing
-        mousemoverel(smoothX, smoothY)
+        local dx = bestTarget.X - sc.X
+        local dy = bestTarget.Y - sc.Y
+        mousemoverel(dx * Settings.AimbotSmoothing, dy * Settings.AimbotSmoothing)
     end
 end)
 
-print("✅ Bloxstrike Script Fixed & Loaded | FOV = " .. Settings.FOV)
+print("✅ Bloxstrike Script Reloaded | FOV = " .. Settings.FOV)
