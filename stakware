@@ -1,8 +1,8 @@
 local Settings = {
     AimbotEnabled = true,
-    FOV = 85,
+    FOV = 90,
     TargetPart = "Head",
-    AimbotSmoothing = 0.4,
+    AimbotSmoothing = 0.45,
     ToggleKey = Enum.KeyCode.LeftAlt,
     
     TeamCheck = true,
@@ -32,32 +32,47 @@ local MyTeam = nil
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 15)
 
--- Team Detection
+-- ================== IMPROVED TEAM DETECTION ==================
+local function UpdateMyTeam()
+    if not LocalPlayer.Character then return end
+    
+    local charName = LocalPlayer.Character.Name
+    
+    for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
+        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
+            if MyTeam ~= teamFolder.Name then
+                MyTeam = teamFolder.Name
+                print("✅ Team Updated:", MyTeam)
+            end
+            return MyTeam
+        end
+    end
+end
+
+-- Strong team detection
 task.spawn(function()
     task.wait(1)
     while true do
-        if LocalPlayer.Character then
-            local name = LocalPlayer.Character.Name
-            for _, folder in ipairs(CharactersFolder:GetChildren()) do
-                if folder:FindFirstChild(name) then
-                    if MyTeam ~= folder.Name then
-                        MyTeam = folder.Name
-                        print("✅ Team:", MyTeam)
-                    end
-                    break
-                end
-            end
-        end
-        task.wait(3)
+        UpdateMyTeam()
+        task.wait(3)  -- Check every 3 seconds
     end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.8)
+    UpdateMyTeam()
 end)
 
 local function IsSameTeam(plr)
     if not Settings.TeamCheck or not MyTeam then return false end
     if not plr.Character then return false end
-    local name = plr.Character.Name
-    for _, f in ipairs(CharactersFolder:GetChildren()) do
-        if f:FindFirstChild(name) and f.Name == MyTeam then return true end
+    
+    local charName = plr.Character.Name
+    
+    for _, teamFolder in ipairs(CharactersFolder:GetChildren()) do
+        if teamFolder:IsA("Folder") and teamFolder:FindFirstChild(charName) then
+            return teamFolder.Name == MyTeam
+        end
     end
     return false
 end
@@ -81,7 +96,12 @@ end
 
 local function UpdateChams(plr)
     if plr == LocalPlayer then return end
-    if IsSameTeam(plr) then return end
+    if IsSameTeam(plr) then 
+        -- Remove chams from teammates
+        if Chams[plr] then Chams[plr]:Destroy() Chams[plr] = nil end
+        if WeaponChams[plr] then WeaponChams[plr]:Destroy() WeaponChams[plr] = nil end
+        return 
+    end
 
     local char = plr.Character
     if not char then return end
@@ -110,13 +130,16 @@ local function UpdateChams(plr)
     end
 end
 
+-- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then UpdateChams(plr) end
+        if plr ~= LocalPlayer then
+            UpdateChams(plr)
+        end
     end
 end)
 
--- FOV Circle + Aimbot
+-- Visual Aimbot + FOV
 local Circle = Drawing.new("Circle")
 Circle.Thickness = 2
 Circle.Color = Color3.fromRGB(255, 0, 0)
@@ -167,4 +190,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Stable Bloxstrike Script Loaded | FOV:", Settings.FOV)
+print("✅ Improved TeamCheck + ESP Loaded | FOV:", Settings.FOV)
